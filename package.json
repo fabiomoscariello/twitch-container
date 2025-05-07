@@ -1,0 +1,14 @@
+{
+  "name": "twitch-m3u8-api",
+  "version": "1.0.0",
+  "description": "API to extract Twitch m3u8 stream using yt-dlp",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.0"
+  }
+}
