@@ -1,3 +1,4 @@
+
 const express = require('express');
 const cors = require('cors');
 const { exec } = require('child_process');
@@ -15,10 +16,8 @@ if (!TWITCH_CLIENT_ID || !TWITCH_SECRET) {
   console.warn('⚠️ TWITCH_CLIENT_ID or TWITCH_SECRET is not set. Twitch API calls may fail.');
 }
 
-// CORS
 app.use(cors());
 
-// Store cache per canale
 const streamCache = new Map();
 
 function updateStreamUrl(channel, callback) {
@@ -37,7 +36,6 @@ function updateStreamUrl(channel, callback) {
   });
 }
 
-// Optional debug endpoint
 app.get('/get-stream', (req, res) => {
   const { channel } = req.query;
   if (!channel) return res.status(400).json({ error: 'Missing channel' });
@@ -48,48 +46,83 @@ app.get('/get-stream', (req, res) => {
   });
 });
 
-// Proxy endpoint
-app.use('/stream.m3u8', (req, res, next) => {
+app.get('/stream.m3u8', (req, res) => {
   const { channel } = req.query;
   if (!channel) return res.status(400).send("Missing channel");
 
   const cached = streamCache.get(channel);
 
-  const useProxy = (streamUrl, parsed) => {
-    const proxy = createProxyMiddleware({
-      target: `${parsed.protocol}//${parsed.hostname}`,
-      changeOrigin: true,
-      pathRewrite: () => parsed.pathname + parsed.search,
-      onProxyReq: (proxyReq) => {
-        proxyReq.setHeader("Referer", "https://www.twitch.tv/");
-        proxyReq.setHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
-        proxyReq.setHeader("Origin", "https://www.twitch.tv");
-      },
-      onError: (err, req, res) => {
-        console.error("❌ Proxy error:", err.message);
-        res.status(502).send("Proxy failure");
+  const handleProxy = ({ streamUrl, parsed }) => {
+    const https = require('https');
+    https.get(streamUrl, {
+      headers: {
+        "Referer": "https://www.twitch.tv/",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "Origin": "https://www.twitch.tv"
       }
-    });
+    }, (response) => {
+      if (response.statusCode !== 200) {
+        return res.status(502).send("Failed to fetch m3u8");
+      }
 
-    proxy(req, res, next);
+      res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+
+      let body = '';
+      response.on('data', chunk => body += chunk);
+      response.on('end', () => {
+        const rewritten = body.replace(/(https?:\/\/[^\n]+\.ts)/g, match => {
+          const path = new URL(match).pathname;
+          return `/stream-proxy/${channel}${path}`;
+        });
+        res.send(rewritten);
+      });
+    }).on('error', (e) => {
+      console.error("Fetch error:", e.message);
+      res.status(502).send("Error fetching m3u8");
+    });
   };
 
-  if (cached && cached.streamUrl && cached.parsed) {
-    useProxy(cached.streamUrl, cached.parsed);
+  if (cached) {
+    handleProxy(cached);
   } else {
     updateStreamUrl(channel, (err, data) => {
       if (err) return res.status(503).send("Stream unavailable");
-      useProxy(data.streamUrl, data.parsed);
+      handleProxy(data);
     });
   }
 });
 
-// Root
-app.get('/', (req, res) => {
-  res.send('✅ Twitch Stream Proxy is running (dynamic channel)');
+app.use('/stream-proxy/:channel/*', (req, res, next) => {
+  const channel = req.params.channel;
+  const cached = streamCache.get(channel);
+
+  if (!cached) return res.status(503).send("Stream not cached");
+
+  const { parsed } = cached;
+  const originalPath = req.originalUrl.replace(`/stream-proxy/${channel}`, '');
+
+  const proxy = createProxyMiddleware({
+    target: `${parsed.protocol}//${parsed.hostname}`,
+    changeOrigin: true,
+    pathRewrite: () => originalPath,
+    onProxyReq: (proxyReq) => {
+      proxyReq.setHeader("Referer", "https://www.twitch.tv/");
+      proxyReq.setHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+      proxyReq.setHeader("Origin", "https://www.twitch.tv");
+    },
+    onError: (err, req, res) => {
+      console.error("❌ TS segment proxy error:", err.message);
+      res.status(502).send("Segment proxy failure");
+    }
+  });
+
+  proxy(req, res, next);
 });
 
-// Start server
+app.get('/', (req, res) => {
+  res.send('✅ Twitch Stream Proxy is running with .ts segment support');
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
 });
