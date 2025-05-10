@@ -25,9 +25,10 @@ function updateStreamUrl(channel, callback) {
     if (!err && stdout.trim()) {
       const streamUrl = stdout.trim();
       const parsed = new URL(streamUrl);
-      streamCache.set(channel, { streamUrl, parsed });
+      const basePath = parsed.pathname.replace(/[^/]+\.m3u8.*$/, '');
+      streamCache.set(channel, { streamUrl, parsed, basePath });
       console.log(`✅ Stream URL updated for ${channel}`);
-      callback(null, { streamUrl, parsed });
+      callback(null, { streamUrl, parsed, basePath });
     } else {
       console.warn(`⚠️ Failed to update stream for ${channel}`);
       if (stderr) console.error(stderr);
@@ -98,13 +99,16 @@ app.use('/stream-proxy/:channel/*', (req, res, next) => {
 
   if (!cached) return res.status(503).send("Stream not cached");
 
-  const { parsed } = cached;
-  const originalPath = req.originalUrl.replace(`/stream-proxy/${channel}`, '');
+  const { parsed, basePath } = cached;
+  const requestPath = req.originalUrl.replace(`/stream-proxy/${channel}`, '');
+  const fullPath = basePath + requestPath;
+
+  console.log("🔁 Proxying TS segment:", fullPath);
 
   const proxy = createProxyMiddleware({
     target: `${parsed.protocol}//${parsed.hostname}`,
     changeOrigin: true,
-    pathRewrite: () => originalPath,
+    pathRewrite: () => fullPath,
     onProxyReq: (proxyReq) => {
       proxyReq.setHeader("Referer", "https://www.twitch.tv/");
       proxyReq.setHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
@@ -120,7 +124,7 @@ app.use('/stream-proxy/:channel/*', (req, res, next) => {
 });
 
 app.get('/', (req, res) => {
-  res.send('✅ Twitch Stream Proxy is running with .ts segment support');
+  res.send('✅ Twitch Stream Proxy is running with .ts segment support (basePath fixed)');
 });
 
 app.listen(PORT, () => {
