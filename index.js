@@ -25,10 +25,9 @@ function updateStreamUrl(channel, callback) {
     if (!err && stdout.trim()) {
       const streamUrl = stdout.trim();
       const parsed = new URL(streamUrl);
-      const basePath = parsed.pathname.replace(/[^/]+\.m3u8.*$/, '');
-      streamCache.set(channel, { streamUrl, parsed, basePath });
+      streamCache.set(channel, { streamUrl, parsed });
       console.log(`✅ Stream URL updated for ${channel}`);
-      callback(null, { streamUrl, parsed, basePath });
+      callback(null, { streamUrl, parsed });
     } else {
       console.warn(`⚠️ Failed to update stream for ${channel}`);
       if (stderr) console.error(stderr);
@@ -53,7 +52,7 @@ app.get('/stream.m3u8', (req, res) => {
 
   const cached = streamCache.get(channel);
 
-  const handleProxy = ({ streamUrl, parsed }) => {
+  const handleProxy = ({ streamUrl }) => {
     const https = require('https');
     https.get(streamUrl, {
       headers: {
@@ -71,9 +70,8 @@ app.get('/stream.m3u8', (req, res) => {
       let body = '';
       response.on('data', chunk => body += chunk);
       response.on('end', () => {
-        const rewritten = body.replace(/(https?:\/\/[^\n]+\.ts)/g, match => {
-          const path = new URL(match).pathname;
-          return `/stream-proxy/${channel}${path}`;
+        const rewritten = body.replace(/(https?:\/\/[^\n]+\.ts[^\n]*)/g, match => {
+          return `/stream-segment/${channel}?url=${encodeURIComponent(match)}`;
         });
         res.send(rewritten);
       });
@@ -93,29 +91,22 @@ app.get('/stream.m3u8', (req, res) => {
   }
 });
 
-app.use('/stream-proxy/:channel/*', (req, res, next) => {
-  const channel = req.params.channel;
-  const cached = streamCache.get(channel);
+app.get('/stream-segment/:channel', (req, res, next) => {
+  const rawUrl = req.query.url;
+  if (!rawUrl) return res.status(400).send("Missing segment URL");
 
-  if (!cached) return res.status(503).send("Stream not cached");
-
-  const { parsed, basePath } = cached;
-  const requestPath = req.originalUrl.replace(`/stream-proxy/${channel}`, '');
-  const fullPath = basePath + requestPath;
-
-  console.log("🔁 Proxying TS segment:", fullPath);
-
+  const targetUrl = new URL(rawUrl);
   const proxy = createProxyMiddleware({
-    target: `${parsed.protocol}//${parsed.hostname}`,
+    target: `${targetUrl.protocol}//${targetUrl.hostname}`,
     changeOrigin: true,
-    pathRewrite: () => fullPath,
+    pathRewrite: () => targetUrl.pathname + targetUrl.search,
     onProxyReq: (proxyReq) => {
       proxyReq.setHeader("Referer", "https://www.twitch.tv/");
       proxyReq.setHeader("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
       proxyReq.setHeader("Origin", "https://www.twitch.tv");
     },
     onError: (err, req, res) => {
-      console.error("❌ TS segment proxy error:", err.message);
+      console.error("❌ Segment proxy error:", err.message);
       res.status(502).send("Segment proxy failure");
     }
   });
@@ -124,7 +115,7 @@ app.use('/stream-proxy/:channel/*', (req, res, next) => {
 });
 
 app.get('/', (req, res) => {
-  res.send('✅ Twitch Stream Proxy is running with .ts segment support (basePath fixed)');
+  res.send('✅ Twitch Proxy with URL-based TS segment redirection is live');
 });
 
 app.listen(PORT, () => {
