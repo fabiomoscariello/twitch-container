@@ -21,12 +21,13 @@ app.use(cors());
 const streamCache = new Map();
 
 function updateStreamUrl(channel, callback) {
+  console.log(`🔍 Attempting to update stream URL for channel: ${channel}`);
   exec(`yt-dlp -g https://www.twitch.tv/${channel}`, (err, stdout, stderr) => {
     if (!err && stdout.trim()) {
       const streamUrl = stdout.trim();
       const parsed = new URL(streamUrl);
       streamCache.set(channel, { streamUrl, parsed });
-      console.log(`✅ Stream URL updated for ${channel}`);
+      console.log(`✅ Stream URL updated for ${channel}. URL: ${streamUrl.substring(0, 50)}...`);
       callback(null, { streamUrl, parsed });
     } else {
       console.warn(`⚠️ Failed to update stream for ${channel}`);
@@ -40,8 +41,10 @@ app.get('/get-stream', (req, res) => {
   const { channel } = req.query;
   if (!channel) return res.status(400).json({ error: 'Missing channel' });
 
+  console.log(`➡️ /get-stream: Request for channel ${channel}. Calling updateStreamUrl.`);
   updateStreamUrl(channel, (err, data) => {
     if (err) return res.status(503).json({ error: 'Stream not available' });
+    console.log(`⬅️ /get-stream: Responding for channel ${channel}.`);
     return res.json({ stream_url: data.streamUrl });
   });
 });
@@ -82,10 +85,13 @@ app.get('/stream.m3u8', (req, res) => {
   };
 
   if (cached) {
+    console.log(`➡️ /stream.m3u8: Request for channel ${channel}. Using cached stream URL.`);
     handleProxy(cached);
   } else {
+    console.log(`➡️ /stream.m3u8: Request for channel ${channel}. Cache miss, calling updateStreamUrl.`);
     updateStreamUrl(channel, (err, data) => {
       if (err) return res.status(503).send("Stream unavailable");
+      console.log(`⬅️ /stream.m3u8: Responding for channel ${channel} after cache miss.`);
       handleProxy(data);
     });
   }
