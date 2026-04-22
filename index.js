@@ -120,10 +120,26 @@ app.get('/stream-segment/:channel', (req, res, next) => {
   proxy(req, res, next);
 });
 
-app.get('/', (req, res) => {
-  res.send('✅ Twitch Proxy with URL-based TS segment redirection is live');
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok' });
+});
+
+app.get('/', (_req, res) => {
+  res.send('Twitch Proxy is live');
 });
 
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
+
+// Keep-alive: prevents Render free tier spin-down after 15 min of inactivity
+if (process.env.RENDER_EXTERNAL_HOSTNAME) {
+  const selfUrl = `https://${process.env.RENDER_EXTERNAL_HOSTNAME}/health`;
+  setInterval(async () => {
+    try {
+      await fetch(selfUrl, { signal: AbortSignal.timeout(5000) });
+    } catch (err) {
+      console.warn('Keep-alive ping failed:', err.message);
+    }
+  }, 13 * 60 * 1000);
+}
