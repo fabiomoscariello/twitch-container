@@ -18,10 +18,10 @@ twitch-container/
 - **Runtime:** Node.js 18, CommonJS
 - **Framework:** Express 4
 - **CORS:** `cors`
-- **Proxy:** `http-proxy-middleware` (per forward stream)
-- **Stream extraction:** `yt-dlp` (processo figlio via `child_process.exec`)
-- **Cache:** `Map` in-memory (channel → {streamUrl, parsed})
-- **Auth Twitch:** OAuth via `TWITCH_CLIENT_ID` + `TWITCH_SECRET`
+- **Stream extraction:** Twitch GQL API (`streamPlaybackAccessToken`) + redirect a Usher HLS — nessun binario esterno
+- **Cache:** `Map` in-memory (channel → {url, cachedAt}), TTL 3 min
+- **Auth Twitch:** OAuth app token via `TWITCH_CLIENT_ID` + `TWITCH_SECRET`, token cachato in-process
+- **Deploy:** Vercel (serverless, `vercel.json` incluso) o qualsiasi runtime Node 18+
 
 ## Variabili d'Ambiente
 
@@ -41,19 +41,19 @@ Risponde con l'URL m3u8 del canale (estratto da yt-dlp, cachato in memoria).
 
 ## Docker
 
-```dockerfile
-# Node 18, installa: python3, pip3, ffmpeg, yt-dlp, npm deps
+Il `Dockerfile` esistente non è più necessario per Vercel. Rimane utile per deploy self-hosted:
+```bash
 docker build -t twitch-container .
 docker run -e TWITCH_CLIENT_ID=... -e TWITCH_SECRET=... -p 3000:3000 twitch-container
 ```
 
 ## Regole Specifiche
 
-- `yt-dlp` deve essere aggiornato nell'immagine Docker per compatibilità con Twitch (le URL cambiano frequentemente)
-- La cache in-memory (`streamCache` Map) non ha TTL esplicito: valutare refresh periodico se le URL scadono
-- Non loggare mai le URL complete degli stream nei log produzione (possono contenere token)
-- `TWITCH_CLIENT_ID` e `TWITCH_SECRET` mai committati: solo via env
-- Il Dockerfile usa `--break-system-packages` per pip3: necessario su Debian 12+ (Bookworm)
+- Nessun binario esterno: lo stream URL viene risolto via Twitch OAuth + GQL API
+- La cache in-memory ha TTL 3 min: le URL Usher scadono in pochi minuti, non aumentare il TTL
+- Non loggare mai le URL complete degli stream in produzione (contengono token firmati)
+- `TWITCH_CLIENT_ID` e `TWITCH_SECRET` mai committati: solo via env var (Vercel dashboard o `.env` locale)
+- Su Vercel il token OAuth è cachato in-process ma reset a ogni cold start: accettabile
 
 ## File Chiave
 
