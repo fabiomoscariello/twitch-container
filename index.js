@@ -116,8 +116,9 @@ app.get('/stream.m3u8', async (req, res) => {
       },
     });
     if (!upstream.ok) {
-      console.error(`/stream.m3u8 usher error for ${channel}: ${upstream.status}`);
-      return res.status(503).send('Stream unavailable');
+      const body = await upstream.text().catch(() => '');
+      console.error(`/stream.m3u8 usher ${upstream.status} for ${channel}: ${body.slice(0, 200)}`);
+      return res.status(503).send(`Stream unavailable (usher:${upstream.status})`);
     }
     const body = await upstream.text();
     console.log(`/stream.m3u8: proxied playlist for ${channel}`);
