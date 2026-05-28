@@ -121,7 +121,7 @@ app.get('/get-stream', async (req, res) => {
     res.json({ stream_url: url });
   } catch (err) {
     console.error(`/get-stream error for ${channel}:`, err.message);
-    res.status(503).json({ error: 'Stream not available' });
+    res.status(503).json({ error: 'Stream not available', detail: err.message });
   }
 });
 
