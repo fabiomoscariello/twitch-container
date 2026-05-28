@@ -106,9 +106,19 @@ app.get('/stream.m3u8', async (req, res) => {
   if (!channel) return res.status(400).send('Missing channel');
 
   try {
-    const url = await resolveStreamUrl(channel);
-    console.log(`/stream.m3u8: redirect for ${channel}`);
-    res.redirect(302, url);
+    const usherUrl = await resolveStreamUrl(channel);
+    const upstream = await fetch(usherUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/x-mpegURL' },
+    });
+    if (!upstream.ok) {
+      console.error(`/stream.m3u8 usher error for ${channel}: ${upstream.status}`);
+      return res.status(503).send('Stream unavailable');
+    }
+    const body = await upstream.text();
+    console.log(`/stream.m3u8: proxied playlist for ${channel}`);
+    res.setHeader('Content-Type', 'application/x-mpegURL');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.send(body);
   } catch (err) {
     console.error(`/stream.m3u8 error for ${channel}:`, err.message);
     res.status(503).send('Stream unavailable');
