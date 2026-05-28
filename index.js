@@ -39,11 +39,14 @@ async function getAppToken() {
   return cachedToken;
 }
 
+// GQL richiede il client ID ufficiale del web player Twitch
+const TWITCH_WEB_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
+
 async function getPlaybackToken(channel, appToken) {
   const res = await fetch('https://gql.twitch.tv/gql', {
     method: 'POST',
     headers: {
-      'Client-ID': TWITCH_CLIENT_ID,
+      'Client-ID': TWITCH_WEB_CLIENT_ID,
       'Authorization': `Bearer ${appToken}`,
       'Content-Type': 'application/json',
     },
