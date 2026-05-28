@@ -83,7 +83,7 @@ function buildUsherUrl(channel, signature, value) {
     supported_codecs: 'avc1',
     transcode_mode: 'cbr_v1',
   });
-  return `https://usher.twitchapps.com/hls/${channel}.m3u8?${params}`;
+  return `https://usher.twitch.tv/hls/${channel}.m3u8?${params}`;
 }
 
 // In-process stream cache (best-effort; cold starts on Vercel reset it)
@@ -108,7 +108,12 @@ app.get('/stream.m3u8', async (req, res) => {
   try {
     const usherUrl = await resolveStreamUrl(channel);
     const upstream = await fetch(usherUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/x-mpegURL' },
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Referer': 'https://www.twitch.tv/',
+        'Origin': 'https://www.twitch.tv',
+        'Accept': 'application/x-mpegURL, application/vnd.apple.mpegurl, */*',
+      },
     });
     if (!upstream.ok) {
       console.error(`/stream.m3u8 usher error for ${channel}: ${upstream.status}`);
