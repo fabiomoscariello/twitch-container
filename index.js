@@ -106,25 +106,9 @@ app.get('/stream.m3u8', async (req, res) => {
   if (!channel) return res.status(400).send('Missing channel');
 
   try {
-    const usherUrl = await resolveStreamUrl(channel);
-    const upstream = await fetch(usherUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Referer': 'https://www.twitch.tv/',
-        'Origin': 'https://www.twitch.tv',
-        'Accept': 'application/x-mpegURL, application/vnd.apple.mpegurl, */*',
-      },
-    });
-    if (!upstream.ok) {
-      const body = await upstream.text().catch(() => '');
-      console.error(`/stream.m3u8 usher ${upstream.status} for ${channel}: ${body.slice(0, 200)}`);
-      return res.status(503).send(`Stream unavailable (usher:${upstream.status})`);
-    }
-    const body = await upstream.text();
-    console.log(`/stream.m3u8: proxied playlist for ${channel}`);
-    res.setHeader('Content-Type', 'application/x-mpegURL');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.send(body);
+    const url = await resolveStreamUrl(channel);
+    console.log(`/stream.m3u8: redirect for ${channel}`);
+    res.redirect(302, url);
   } catch (err) {
     console.error(`/stream.m3u8 error for ${channel}:`, err.message);
     res.status(503).send('Stream unavailable');
