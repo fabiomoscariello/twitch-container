@@ -107,8 +107,13 @@ app.get('/stream.m3u8', async (req, res) => {
 
   try {
     const url = await resolveStreamUrl(channel);
-    console.log(`/stream.m3u8: redirect for ${channel}`);
-    res.redirect(302, url);
+    console.log(`/stream.m3u8: proxying m3u8 for ${channel}`);
+    const upstream = await fetch(url);
+    if (!upstream.ok) throw new Error(`Usher error: ${upstream.status}`);
+    const m3u8 = await upstream.text();
+    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.send(m3u8);
   } catch (err) {
     console.error(`/stream.m3u8 error for ${channel}:`, err.message);
     res.status(503).send('Stream unavailable');
