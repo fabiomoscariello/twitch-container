@@ -14,8 +14,8 @@ app.use(cors());
 const streamCache = new Map();
 const CACHE_TTL_MS = 3 * 60 * 1000;
 
-// Whitelist CDN Twitch: unico dominio autorizzato nel proxy
-const ALLOWED_CDN = /^https:\/\/[a-zA-Z0-9.-]+\.twitch\.tv\//;
+// Whitelist CDN Twitch: twitch.tv e ttvnw.net (playlist + segmenti)
+const ALLOWED_CDN = /^https:\/\/[a-zA-Z0-9.-]+\.(twitch\.tv|ttvnw\.net)\//;
 
 async function resolveStreamUrl(channel) {
   const cached = streamCache.get(channel);
@@ -92,7 +92,8 @@ app.get('/stream.m3u8', async (req, res) => {
   }
 });
 
-// Proxy segmenti .ts e init segment — valida che l'URL sia Twitch CDN
+// Proxy per segmenti .ts, init segment e sub-playlist m3u8
+// Se il contenuto è m3u8 (master o quality playlist), riscrive gli URI ricorsivamente
 app.get('/cdn-proxy', async (req, res) => {
   const { url } = req.query;
   if (!url) return res.status(400).send('Missing url');
@@ -100,11 +101,22 @@ app.get('/cdn-proxy', async (req, res) => {
 
   try {
     const upstream = await fetchCdn(url);
-    const contentType = upstream.headers.get('content-type') || 'video/MP2T';
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=30');
-    const buffer = await upstream.arrayBuffer();
-    res.send(Buffer.from(buffer));
+    const contentType = upstream.headers.get('content-type') || '';
+    const isPlaylist = contentType.includes('mpegurl') || url.includes('.m3u8');
+
+    if (isPlaylist) {
+      const text = await upstream.text();
+      const proxyBase = `${req.protocol}://${req.get('host')}`;
+      const rewritten = rewriteM3u8(text, url, proxyBase);
+      res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+      res.setHeader('Cache-Control', 'no-cache, no-store');
+      res.send(rewritten);
+    } else {
+      res.setHeader('Content-Type', contentType || 'video/MP2T');
+      res.setHeader('Cache-Control', 'public, max-age=30');
+      const buffer = await upstream.arrayBuffer();
+      res.send(Buffer.from(buffer));
+    }
   } catch (err) {
     console.error('/cdn-proxy error:', err.message);
     res.status(502).send('Segment unavailable');
