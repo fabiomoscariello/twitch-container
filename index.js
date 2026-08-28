@@ -15,6 +15,9 @@ const CACHE_TTL_MS = 3 * 60 * 1000;
 // Whitelist CDN Twitch: twitch.tv e ttvnw.net (playlist + segmenti)
 const ALLOWED_CDN = /^https:\/\/[a-zA-Z0-9.-]+\.(twitch\.tv|ttvnw\.net)\//;
 
+// Client-ID pubblico del player web Twitch — usato come fallback
+const TWITCH_GQL_CLIENT_ID = process.env.TWITCH_CLIENT_ID || 'kimne78kx3ncx6brgo4mv6wki5h1ko';
+
 async function resolveStreamUrl(channel) {
   const cached = streamCache.get(channel);
   if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) return cached.url;
@@ -22,7 +25,7 @@ async function resolveStreamUrl(channel) {
   const gqlRes = await fetch('https://gql.twitch.tv/gql', {
     method: 'POST',
     headers: {
-      'Client-ID': process.env.TWITCH_CLIENT_ID,
+      'Client-ID': TWITCH_GQL_CLIENT_ID,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify([{
