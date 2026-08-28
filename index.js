@@ -1,14 +1,12 @@
 
 const express = require('express');
 const cors = require('cors');
-const { exec } = require('child_process');
-const { promisify } = require('util');
 require('dotenv').config();
 
-const execAsync = promisify(exec);
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.set('trust proxy', true); // legge X-Forwarded-Proto da Cloudflare/Render
 app.use(cors());
 
 const streamCache = new Map();
@@ -21,12 +19,33 @@ async function resolveStreamUrl(channel) {
   const cached = streamCache.get(channel);
   if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) return cached.url;
 
-  const { stdout } = await execAsync(
-    `yt-dlp -g --no-playlist "https://www.twitch.tv/${channel}"`,
-    { timeout: 30000 }
-  );
-  const url = stdout.trim().split('\n')[0];
-  if (!url) throw new Error('yt-dlp returned no URL');
+  const gqlRes = await fetch('https://gql.twitch.tv/gql', {
+    method: 'POST',
+    headers: {
+      'Client-ID': process.env.TWITCH_CLIENT_ID,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify([{
+      operationName: 'PlaybackAccessToken',
+      variables: { isLive: true, login: channel, isVod: false, vodID: '', playerType: 'site' },
+      extensions: { persistedQuery: { version: 1, sha256Hash: '0828119ded1c13477966434e15800ff57ddacf13ba1911c129dc2200705b0712' } },
+    }]),
+  });
+  if (!gqlRes.ok) throw new Error(`GQL request failed: ${gqlRes.status}`);
+  const gqlData = await gqlRes.json();
+  const sat = gqlData[0]?.data?.streamPlaybackAccessToken;
+  if (!sat) throw new Error('No streamPlaybackAccessToken in GQL response');
+
+  const usherParams = new URLSearchParams({
+    channel,
+    sig: sat.signature,
+    token: sat.value,
+    allow_source: 'true',
+    allow_spectre: 'true',
+    fast_bread: 'true',
+    p: String(Math.floor(Math.random() * 999999)),
+  });
+  const url = `https://usher.twitchsvc.net/api/channel/live_playlist.m3u8?${usherParams}`;
   streamCache.set(channel, { url, cachedAt: Date.now() });
   return url;
 }
