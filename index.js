@@ -91,24 +91,9 @@ function rewriteM3u8(text, originalUrl, proxyBase) {
     .join('\n');
 }
 
-// Redirect 302 all'URL Usher — ExoPlayer segue il redirect da IP dispositivo,
-// evitando il blocco Twitch sugli IP datacenter Vercel
+// Proxy m3u8 completo — il device non vede mai i domini Twitch,
+// risolve problemi di DNS search domain (TIM, Pi-hole, etc.)
 app.get('/stream.m3u8', async (req, res) => {
-  const { channel } = req.query;
-  if (!channel) return res.status(400).send('Missing channel');
-  if (!/^[a-zA-Z0-9_]{1,25}$/.test(channel)) return res.status(400).send('Invalid channel');
-
-  try {
-    const cdnUrl = await resolveStreamUrl(channel);
-    return res.redirect(302, cdnUrl);
-  } catch (err) {
-    console.error(`/stream.m3u8 error for ${channel}:`, err.message);
-    res.status(503).send('Stream unavailable');
-  }
-});
-
-// Proxy m3u8 con URI riscritti — solo per browser (CORS), non per ExoPlayer
-app.get('/stream-proxy.m3u8', async (req, res) => {
   const { channel } = req.query;
   if (!channel) return res.status(400).send('Missing channel');
   if (!/^[a-zA-Z0-9_]{1,25}$/.test(channel)) return res.status(400).send('Invalid channel');
