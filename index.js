@@ -55,7 +55,7 @@ async function resolveStreamUrl(channel) {
 
 // Fetch server-side con headers che imitano il player web Twitch
 async function fetchCdn(url) {
-  const isUsher = url.includes('usher.twitchsvc.net');
+  const isUsher = url.includes('usher.twitch.tv') || url.includes('usher.twitchsvc.net');
   const headers = isUsher
     ? {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
@@ -99,15 +99,21 @@ function rewriteM3u8(text, originalUrl, proxyBase) {
     .join('\n');
 }
 
-// Redirect 302 → ExoPlayer usa DoH per risolvere usher.twitchsvc.net correttamente
+// Fetch master playlist da Usher server-side, riscrive URI → device non tocca mai Usher direttamente
 app.get('/stream.m3u8', async (req, res) => {
   const { channel } = req.query;
   if (!channel) return res.status(400).send('Missing channel');
   if (!/^[a-zA-Z0-9_]{1,25}$/.test(channel)) return res.status(400).send('Invalid channel');
 
   try {
-    const cdnUrl = await resolveStreamUrl(channel);
-    return res.redirect(302, cdnUrl);
+    const usherUrl = await resolveStreamUrl(channel);
+    const upstream = await fetchCdn(usherUrl);
+    const text = await upstream.text();
+    const proxyBase = `${req.protocol}://${req.get('host')}`;
+    const rewritten = rewriteM3u8(text, usherUrl, proxyBase);
+    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+    res.setHeader('Cache-Control', 'no-cache, no-store');
+    res.send(rewritten);
   } catch (err) {
     console.error(`/stream.m3u8 error for ${channel}:`, err.message);
     res.status(503).send('Stream unavailable');
