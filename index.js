@@ -53,11 +53,19 @@ async function resolveStreamUrl(channel) {
   return url;
 }
 
-// Fetch server-side senza Origin header → il CDN non vede una richiesta browser
+// Fetch server-side con headers che imitano il player web Twitch
 async function fetchCdn(url) {
-  const response = await fetch(url, {
-    headers: { 'User-Agent': 'okhttp/4.12.0' },
-  });
+  const isUsher = url.includes('usher.twitchsvc.net');
+  const headers = isUsher
+    ? {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        'Accept': 'application/x-mpegURL, application/vnd.apple.mpegurl, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://www.twitch.tv/',
+        'Origin': 'https://www.twitch.tv',
+      }
+    : { 'User-Agent': 'okhttp/4.12.0' };
+  const response = await fetch(url, { headers });
   if (!response.ok) throw new Error(`CDN ${response.status} for ${url}`);
   return response;
 }
