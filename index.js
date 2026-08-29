@@ -25,10 +25,10 @@ function resolveViaYtDlp(channel) {
       'yt-dlp',
       ['--no-warnings', '--no-playlist', '-f', 'best', '-g', `https://www.twitch.tv/${channel}`],
       { timeout: 30_000, env: { PATH: process.env.PATH, HOME: process.env.HOME } },
-      (err, stdout) => {
-        if (err) return reject(new Error(`yt-dlp: ${err.message}`));
+      (err, stdout, stderr) => {
+        if (err) return reject(new Error(`yt-dlp: ${(stderr || err.message).trim()}`));
         const url = stdout.trim().split('\n')[0];
-        if (!url || !url.startsWith('http')) return reject(new Error('yt-dlp: no URL in output'));
+        if (!url || !url.startsWith('http')) return reject(new Error(`yt-dlp: no URL (stderr: ${stderr.trim()})`));
         resolve(url);
       },
     );
