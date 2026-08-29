@@ -13,7 +13,7 @@ const streamCache = new Map();
 const CACHE_TTL_MS = 3 * 60 * 1000;
 
 // Whitelist CDN Twitch: twitch.tv e ttvnw.net (playlist + segmenti)
-const ALLOWED_CDN = /^https:\/\/[a-zA-Z0-9.-]+\.(twitch\.tv|ttvnw\.net)\//;
+const ALLOWED_CDN = /^https:\/\/[a-zA-Z0-9.-]+\.(twitch\.tv|twitchsvc\.net|ttvnw\.net)\//;
 
 // Client-ID del player web Twitch — unico accettato dall'endpoint GQL interno
 const TWITCH_GQL_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
@@ -48,7 +48,7 @@ async function resolveStreamUrl(channel) {
     fast_bread: 'true',
     p: String(Math.floor(Math.random() * 999999)),
   });
-  const url = `https://usher.twitchsvc.net/api/channel/live_playlist.m3u8?${usherParams}`;
+  const url = `https://usher.twitch.tv/api/channel/live_playlist.m3u8?${usherParams}`;
   streamCache.set(channel, { url, cachedAt: Date.now() });
   return url;
 }
