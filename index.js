@@ -1,6 +1,7 @@
 
 const express = require('express');
 const cors = require('cors');
+const { execFile } = require('child_process');
 require('dotenv').config();
 
 const app = express();
@@ -15,40 +16,30 @@ const CACHE_TTL_MS = 3 * 60 * 1000;
 // Whitelist CDN Twitch: twitch.tv e ttvnw.net (playlist + segmenti)
 const ALLOWED_CDN = /^https:\/\/[a-zA-Z0-9.-]+\.(twitch\.tv|twitchsvc\.net|ttvnw\.net)\//;
 
-// Client-ID del player web Twitch — unico accettato dall'endpoint GQL interno
-const TWITCH_GQL_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
+// yt-dlp: Python TCP supera il fingerprint check di Usher; Node.js fetch no.
+// Restituisce la URL della variant playlist CDN (video-weaver.*.hls.twitchsvc.net)
+// che il device può raggiungere direttamente.
+function resolveViaYtDlp(channel) {
+  return new Promise((resolve, reject) => {
+    execFile(
+      'yt-dlp',
+      ['--no-warnings', '--no-playlist', '-f', 'best', '-g', `https://www.twitch.tv/${channel}`],
+      { timeout: 30_000, env: { PATH: process.env.PATH, HOME: process.env.HOME } },
+      (err, stdout) => {
+        if (err) return reject(new Error(`yt-dlp: ${err.message}`));
+        const url = stdout.trim().split('\n')[0];
+        if (!url || !url.startsWith('http')) return reject(new Error('yt-dlp: no URL in output'));
+        resolve(url);
+      },
+    );
+  });
+}
 
 async function resolveStreamUrl(channel) {
   const cached = streamCache.get(channel);
   if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) return cached.url;
 
-  const gqlRes = await fetch('https://gql.twitch.tv/gql', {
-    method: 'POST',
-    headers: {
-      'Client-ID': TWITCH_GQL_CLIENT_ID,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify([{
-      operationName: 'PlaybackAccessToken',
-      variables: { isLive: true, login: channel, isVod: false, vodID: '', playerType: 'site' },
-      extensions: { persistedQuery: { version: 1, sha256Hash: '0828119ded1c13477966434e15800ff57ddacf13ba1911c129dc2200705b0712' } },
-    }]),
-  });
-  if (!gqlRes.ok) throw new Error(`GQL request failed: ${gqlRes.status}`);
-  const gqlData = await gqlRes.json();
-  const sat = gqlData[0]?.data?.streamPlaybackAccessToken;
-  if (!sat) throw new Error('No streamPlaybackAccessToken in GQL response');
-
-  const usherParams = new URLSearchParams({
-    channel,
-    sig: sat.signature,
-    token: sat.value,
-    allow_source: 'true',
-    allow_spectre: 'true',
-    fast_bread: 'true',
-    p: String(Math.floor(Math.random() * 999999)),
-  });
-  const url = `https://usher.twitch.tv/api/channel/live_playlist.m3u8?${usherParams}`;
+  const url = await resolveViaYtDlp(channel);
   streamCache.set(channel, { url, cachedAt: Date.now() });
   return url;
 }
@@ -99,21 +90,15 @@ function rewriteM3u8(text, originalUrl, proxyBase) {
     .join('\n');
 }
 
-// Fetch master playlist da Usher server-side, riscrive URI → device non tocca mai Usher direttamente
+// yt-dlp ritorna URL CDN (video-weaver.*.hls.twitchsvc.net) raggiungibile dal device
 app.get('/stream.m3u8', async (req, res) => {
   const { channel } = req.query;
   if (!channel) return res.status(400).send('Missing channel');
   if (!/^[a-zA-Z0-9_]{1,25}$/.test(channel)) return res.status(400).send('Invalid channel');
 
   try {
-    const usherUrl = await resolveStreamUrl(channel);
-    const upstream = await fetchCdn(usherUrl);
-    const text = await upstream.text();
-    const proxyBase = `${req.protocol}://${req.get('host')}`;
-    const rewritten = rewriteM3u8(text, usherUrl, proxyBase);
-    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-    res.setHeader('Cache-Control', 'no-cache, no-store');
-    res.send(rewritten);
+    const cdnUrl = await resolveStreamUrl(channel);
+    return res.redirect(302, cdnUrl);
   } catch (err) {
     console.error(`/stream.m3u8 error for ${channel}:`, err.message);
     res.status(503).send('Stream unavailable');
