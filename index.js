@@ -169,6 +169,26 @@ app.get('/get-stream', async (req, res) => {
   }
 });
 
+app.get('/debug-stream', async (req, res) => {
+  const channel = req.query.channel || 'gruppo_telenuova';
+  try {
+    const cdnUrl = await resolveStreamUrl(channel);
+    const response = await fetch(cdnUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        'Accept': 'application/x-mpegURL, application/vnd.apple.mpegurl, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://www.twitch.tv/',
+        'Origin': 'https://www.twitch.tv',
+      },
+    });
+    const body = await response.text();
+    res.json({ status: response.status, headers: Object.fromEntries(response.headers), body: body.slice(0, 500) });
+  } catch (err) {
+    res.json({ error: err.message });
+  }
+});
+
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 app.get('/', (_req, res) => res.send('Twitch Proxy is live'));
 
