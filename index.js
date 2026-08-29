@@ -35,11 +35,42 @@ function resolveViaYtDlp(channel) {
   });
 }
 
+const TWITCH_GQL_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko';
+
+async function resolveViaGql(channel) {
+  const gqlRes = await fetch('https://gql.twitch.tv/gql', {
+    method: 'POST',
+    headers: { 'Client-ID': TWITCH_GQL_CLIENT_ID, 'Content-Type': 'application/json' },
+    body: JSON.stringify([{
+      operationName: 'PlaybackAccessToken',
+      variables: { isLive: true, login: channel, isVod: false, vodID: '', playerType: 'site' },
+      extensions: { persistedQuery: { version: 1, sha256Hash: '0828119ded1c13477966434e15800ff57ddacf13ba1911c129dc2200705b0712' } },
+    }]),
+  });
+  if (!gqlRes.ok) throw new Error(`GQL ${gqlRes.status}`);
+  const gqlData = await gqlRes.json();
+  const sat = gqlData[0]?.data?.streamPlaybackAccessToken;
+  if (!sat) throw new Error('No streamPlaybackAccessToken');
+  const params = new URLSearchParams({
+    channel, sig: sat.signature, token: sat.value,
+    allow_source: 'true', allow_spectre: 'true', fast_bread: 'true',
+    p: String(Math.floor(Math.random() * 999999)),
+  });
+  return `https://usher.twitch.tv/api/channel/live_playlist.m3u8?${params}`;
+}
+
 async function resolveStreamUrl(channel) {
   const cached = streamCache.get(channel);
   if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) return cached.url;
 
-  const url = await resolveViaYtDlp(channel);
+  let url;
+  try {
+    url = await resolveViaYtDlp(channel);
+    console.log(`[stream] yt-dlp ok for ${channel}`);
+  } catch (ytErr) {
+    console.warn(`[stream] yt-dlp failed (${ytErr.message}), fallback to GQL`);
+    url = await resolveViaGql(channel);
+  }
   streamCache.set(channel, { url, cachedAt: Date.now() });
   return url;
 }
