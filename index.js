@@ -129,7 +129,13 @@ app.get('/stream.m3u8', async (req, res) => {
 
   try {
     const cdnUrl = await resolveStreamUrl(channel);
-    return res.redirect(302, cdnUrl);
+    const upstream = await fetchCdn(cdnUrl);
+    const text = await upstream.text();
+    const proxyBase = `${req.protocol}://${req.get('host')}`;
+    const rewritten = rewriteM3u8(text, cdnUrl, proxyBase);
+    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+    res.setHeader('Cache-Control', 'no-cache, no-store');
+    return res.send(rewritten);
   } catch (err) {
     console.error(`/stream.m3u8 error for ${channel}:`, err.message);
     res.status(503).send('Stream unavailable');
