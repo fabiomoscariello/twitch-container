@@ -59,6 +59,8 @@ async function resolveViaGql(channel) {
   return `https://usher.twitch.tv/api/channel/live_playlist.m3u8?${params}`;
 }
 
+let lastYtDlpError = null;
+
 async function resolveStreamUrl(channel) {
   const cached = streamCache.get(channel);
   if (cached && Date.now() - cached.cachedAt < CACHE_TTL_MS) return cached.url;
@@ -66,8 +68,12 @@ async function resolveStreamUrl(channel) {
   let url;
   try {
     url = await resolveViaYtDlp(channel);
+    lastYtDlpError = null;
     console.log(`[stream] yt-dlp ok for ${channel}`);
   } catch (ytErr) {
+    // Quando yt-dlp cade restiamo con una URL Usher, che dal nostro server viene
+    // rifiutata: tenerne traccia e' l'unico modo per capirlo dalla risposta
+    lastYtDlpError = ytErr.message;
     console.warn(`[stream] yt-dlp failed (${ytErr.message}), fallback to GQL`);
     url = await resolveViaGql(channel);
   }
@@ -142,7 +148,11 @@ app.get('/stream.m3u8', async (req, res) => {
     console.error(`/stream.m3u8 error for ${channel}:`, err.message);
     // Il motivo serve a distinguere "canale offline" da "Twitch ci rifiuta":
     // senza i log di Render era impossibile capire quale dei due
-    res.status(503).send(`Stream unavailable: ${err.message}`);
+    // Il messaggio di fetch in Node e' sempre "fetch failed": il motivo vero sta
+    // nella causa, e il guasto a monte spesso e' yt-dlp caduto qualche riga prima
+    const cause = err.cause?.message ? ` (${err.cause.message})` : '';
+    const ytdlp = lastYtDlpError ? ` [yt-dlp: ${lastYtDlpError}]` : '';
+    res.status(503).send(`Stream unavailable: ${err.message}${cause}${ytdlp}`);
   }
 });
 
