@@ -88,7 +88,9 @@ async function fetchCdn(url) {
       }
     : { 'User-Agent': 'okhttp/4.12.0' };
   const response = await fetch(url, { headers });
-  if (!response.ok) throw new Error(`CDN ${response.status} for ${url}`);
+  // Solo stato e host nel messaggio: le URL di Twitch portano il token firmato
+  // e questo errore finisce sia nei log sia nella risposta al client
+  if (!response.ok) throw new Error(`CDN ${response.status} da ${new URL(url).host}`);
   return response;
 }
 
@@ -138,7 +140,9 @@ app.get('/stream.m3u8', async (req, res) => {
     return res.send(rewritten);
   } catch (err) {
     console.error(`/stream.m3u8 error for ${channel}:`, err.message);
-    res.status(503).send('Stream unavailable');
+    // Il motivo serve a distinguere "canale offline" da "Twitch ci rifiuta":
+    // senza i log di Render era impossibile capire quale dei due
+    res.status(503).send(`Stream unavailable: ${err.message}`);
   }
 });
 
