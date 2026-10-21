@@ -42,3 +42,5 @@ docker.env
 *.tar.gz
 *.zip
 *.bak
+.vercel
+.env*

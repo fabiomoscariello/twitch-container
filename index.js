@@ -188,7 +188,10 @@ app.get('/get-stream', async (req, res) => {
   }
 });
 
-app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+// Il commit che Render sta davvero servendo: serve a capire a colpo d'occhio se
+// un deploy e' passato, visto che il bug visto in campo era codice vecchio online.
+app.get('/health', (_req, res) =>
+  res.json({ status: 'ok', commit: (process.env.RENDER_GIT_COMMIT || 'local').slice(0, 7) }));
 app.get('/', (_req, res) => res.send('Twitch Proxy is live'));
 
 if (require.main === module) {
@@ -196,3 +199,4 @@ if (require.main === module) {
 }
 
 module.exports = app;
+module.exports.rewriteM3u8 = rewriteM3u8;
